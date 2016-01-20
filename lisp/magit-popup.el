@@ -369,9 +369,11 @@ or `:only' which doesn't change the behaviour."
 (defun magit-popup-get-args ()
   (--mapcat (when (and (magit-popup-event-p it)
                        (magit-popup-event-use it))
-              (list (format "%s%s"
-                            (magit-popup-event-arg it)
-                            (or (magit-popup-event-val it) ""))))
+              (let ((arg (magit-popup-event-arg it))
+                    (val (magit-popup-event-val it)))
+                (list (if (string-match "\\[[-a-z|]+\\]" arg)
+                          (replace-match val t t arg)
+                        (concat arg val)))))
             (append (magit-popup-get :switches)
                     (magit-popup-get :options))))
 
@@ -380,6 +382,7 @@ or `:only' which doesn't change the behaviour."
   `(--map (if (or (null it) (stringp it) (functionp it)) it ,form) ,def))
 
 (defun magit-popup-convert-switches (val def)
+  ;; TODO e.g. --topo-order => --[date|author-date|topo]-order
   (magit-popup-convert-events def
     (let ((a (nth 2 it)))
       (make-magit-popup-event
@@ -781,12 +784,25 @@ TYPE is one of `:action', `:sequence-action', `:switch', or
 
 (defun magit-invoke-popup-switch (event)
   (interactive (list last-command-event))
-  (--if-let (magit-popup-lookup event :switches)
+  (-if-let (ev (magit-popup-lookup event :switches))
       (progn
-        (setf (magit-popup-event-use it)
-              (not (magit-popup-event-use it)))
+        (-if-let (states (magit-popup-switch-states ev))
+            (-if-let (newval (-if-let (oldval (magit-popup-event-val ev))
+                                 (cadr (member oldval states))
+                               (car states)))
+                (progn (setf (magit-popup-event-val ev) newval)
+                       (setf (magit-popup-event-use ev) t))
+              (setf (magit-popup-event-val ev) nil)
+              (setf (magit-popup-event-use ev) nil))
+          (setq (magit-popup-event-use ev)
+                (not (magit-popup-event-use ev))))
         (magit-refresh-popup-buffer))
     (user-error "%c isn't bound to any switch" event)))
+
+(defun magit-popup-switch-states (ev)
+  (let ((arg (magit-popup-event-arg ev)))
+    (and (string-match "\\[\\([-a-z|]+\\)\\]" arg)
+         (split-string (match-string 1 arg) "|"))))
 
 (defun magit-invoke-popup-option (event)
   (interactive (list last-command-event))
@@ -1129,25 +1145,34 @@ of events shared by all popups and before point is adjusted.")
           (insert (if (= (char-before) ?\n) "\n" "\n\n")))))))
 
 (defun magit-popup-format-argument-button (type ev)
-  (list (format-spec
-         (button-type-get type 'format)
-         `((?k . ,(propertize (concat
-                               (--when-let (button-type-get type 'prefix)
-                                 (char-to-string it))
-                               (magit-popup-event-keydsc ev))
-                              'face 'magit-popup-key))
-           (?d . ,(magit-popup-event-dsc ev))
-           (?a . ,(propertize (magit-popup-event-arg ev)
-                              'face (if (magit-popup-event-use ev)
-                                        'magit-popup-argument
-                                      'magit-popup-disabled-argument)))
-           (?v . ,(let ((val (magit-popup-event-val ev)))
-                    (if (and (magit-popup-event-use ev)
+  (let ((arg (magit-popup-event-arg ev))
+        (val (magit-popup-event-val ev)))
+    (list (format-spec
+           (button-type-get type 'format)
+           `((?k . ,(propertize (concat
+                                 (--when-let (button-type-get type 'prefix)
+                                   (char-to-string it))
+                                 (magit-popup-event-keydsc ev))
+                                'face 'magit-popup-key))
+             (?d . ,(magit-popup-event-dsc ev))
+             (?a . ,(--if-let (magit-popup-switch-states ev)
+                        (if val
+                            ;; TODO improve visualization
+                            (replace-regexp-in-string
+                             (format "[[|]\\(%s\\)[]|]" val)
+                             (propertize val 'face 'magit-popup-argument)
+                             arg t t 1)
+                          (propertize arg 'face 'magit-popup-disabled-argument))
+                      (propertize arg 'face
+                                  (if (magit-popup-event-use ev)
+                                      'magit-popup-argument
+                                    'magit-popup-disabled-argument))))
+             (?v . ,(if (and (magit-popup-event-use ev)
                              (not (equal val "")))
                         (propertize (format "\"%s\"" val)
                                     'face 'magit-popup-option-value)
-                      "")))))
-        'type type 'event (magit-popup-event-key ev)))
+                      ""))))
+          'type type 'event (magit-popup-event-key ev))))
 
 (defun magit-popup-format-variable-button (type ev)
   (if (not (magit-popup-event-arg ev))

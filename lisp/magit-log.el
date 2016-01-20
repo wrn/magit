@@ -299,6 +299,7 @@ the upstream isn't ahead of the current branch) show."
                (?u "Show diffs"              "--patch")
                (?s "Show diffstats"          "--stat")
                (?h "Show header"             "++header")
+               (?o "Order"                   "--[date|author-date|topo]-order")
                (?D "Simplify by decoration"  "--simplify-by-decoration")
                (?f "Follow renames when showing single-file log" "--follow"))
     :options  ((?n "Limit number of commits" "-n")
