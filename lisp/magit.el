@@ -2755,8 +2755,11 @@ Usually this is just its basename."
   (abbreviate-file-name default-directory))
 
 (defun magit-repolist-column-version (_id)
-  "Insert the absolute path of the repository."
-  (let ((v (magit-git-string "describe" "--tags")))
+  "Insert a description of the repository's HEAD revision."
+  (let ((v (or (magit-git-string "describe" "--tags")
+               ;; If no tags, use the date (MELPA format).
+               (magit-git-string "show" "--no-patch" "--format=%cd-g%h"
+                                 "--date=format:%Y%m%d.%H%M"))))
     (if (string-match-p "\\`[0-9]" v)
         (concat " " v)
       v)))
