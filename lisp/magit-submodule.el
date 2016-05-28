@@ -52,28 +52,22 @@ Optional NAME is the name of the submodule.  If it is nil, then
 PATH also becomes the name."
   (interactive
    (magit-with-toplevel
-     (let ((path (magit-completing-read "Add submodules at path"
-                                        (magit-untracked-files)
-                                        #'magit-git-repo-p nil nil nil
-                                        (magit-section-when [file untracked]
-                                          (file-relative-name
-                                           (magit-section-value it)
-                                           default-directory)))))
-       (unless path
-         (user-error "No path selected"))
-       (list (magit-read-string-ns
-              "Remote url"
-              (let ((default-directory (file-name-as-directory
-                                        (expand-file-name path))))
-                (magit-get "remote" (or (magit-get-remote) "origin") "url")))
+     (let* ((url (magit-read-string-ns
+                  "Add submodule (remote url)"
+                  (magit-get "remote" (or (magit-get-remote) "origin") "url")))
+            (path (read-directory-name
+                   "Submodule path: "
+                   nil nil nil (and (string-match "\\([^./]+\\)\\(\\.git\\)?$" url)
+                                    (match-string 1 url)))))
+       (list url
              (directory-file-name path)
              (magit-read-string-ns
-              "Name submodule" nil nil
+              "Submodule name" nil nil
               (or (--keep (-let [(var val) (split-string it "=")]
                             (and (equal val path)
                                  (cadr (split-string var "\\."))))
                           (magit-git-lines "config" "--list" "-f" ".gitmodules"))
-                  (directory-file-name path)))))))
+                  (file-name-nondirectory (directory-file-name path))))))))
   (magit-run-git "submodule" "add" (and name (list "--name" name)) url path))
 
 ;;;###autoload
