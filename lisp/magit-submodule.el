@@ -90,7 +90,12 @@ PATH also becomes the name."
 (defun magit-submodule-setup ()
   "Clone and register missing submodules and checkout appropriate commits."
   (interactive)
-  (magit-submodule-update t))
+  (magit-with-toplevel
+    (let ((uninit (cl-remove-if
+                   (lambda (m) (file-exists-p (expand-file-name ".git" m)))
+                   (magit-get-submodules))))
+      (if uninit (magit-run-git-async "submodule" "update" "--init" "--" uninit)
+        (message "All submodules already setup.")))))
 
 ;;;###autoload
 (defun magit-submodule-init ()
